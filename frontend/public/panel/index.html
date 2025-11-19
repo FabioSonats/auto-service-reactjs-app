@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel - Cozinha e Bar</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .tabs {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 20px;
+    }
+
+    .tab {
+      padding: 12px 24px;
+      background: white;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+
+    .tab.active {
+      background: #667eea;
+      color: white;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .orders-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+    }
+
+    .order-card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      border-left: 4px solid #667eea;
+    }
+
+    .order-card.pending {
+      border-left-color: #ffc107;
+    }
+
+    .order-card.preparing {
+      border-left-color: #17a2b8;
+    }
+
+    .order-card.ready {
+      border-left-color: #28a745;
+    }
+
+    .order-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .order-number {
+      font-size: 18px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    .order-status {
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status-preparing {
+      background: #d1ecf1;
+      color: #0c5460;
+    }
+
+    .status-ready {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .order-table {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 15px;
+    }
+
+    .order-items {
+      margin-bottom: 15px;
+    }
+
+    .order-item {
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .order-item:last-child {
+      border-bottom: none;
+    }
+
+    .item-name {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .item-price {
+      color: #667eea;
+      float: right;
+    }
+
+    .allergies {
+      background: #fff3cd;
+      padding: 8px;
+      border-radius: 4px;
+      margin-top: 10px;
+      font-size: 12px;
+      color: #856404;
+    }
+
+    .order-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+    }
+
+    .btn-success {
+      background: #28a745;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #218838;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #999;
+    }
+
+    .connection-status {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .connected {
+      background: #28a745;
+      color: white;
+    }
+
+    .disconnected {
+      background: #dc3545;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🍽️ Painel de Pedidos</h1>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('kitchen')">Cozinha</div>
+    <div class="tab" onclick="switchTab('bar')">Bar</div>
+  </div>
+
+  <div id="connection-status" class="connection-status disconnected">
+    Desconectado
+  </div>
+
+  <div class="container">
+    <div id="orders-container" class="orders-grid">
+      <div class="empty-state">
+        <p>Aguardando pedidos...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'http://localhost:3000';
+    const WS_URL = 'ws://localhost:3000';
+    let currentTab = 'kitchen';
+    let ws = null;
+    let orders = { kitchen: [], bar: [] };
+
+    function connectWebSocket() {
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        console.log('WebSocket conectado');
+        updateConnectionStatus(true);
+        subscribeToRoom(currentTab);
+      };
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        
+        if (message.type === 'new_order') {
+          const order = message.data;
+          if (order.type === 'KITCHEN') {
+            orders.kitchen.push(order);
+          } else if (order.type === 'BAR') {
+            orders.bar.push(order);
+          }
+          renderOrders();
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        updateConnectionStatus(false);
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket desconectado');
+        updateConnectionStatus(false);
+        setTimeout(connectWebSocket, 3000);
+      };
+    }
+
+    function subscribeToRoom(room) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'subscribe', room }));
+      }
+    }
+
+    function updateConnectionStatus(connected) {
+      const statusEl = document.getElementById('connection-status');
+      if (connected) {
+        statusEl.textContent = 'Conectado';
+        statusEl.className = 'connection-status connected';
+      } else {
+        statusEl.textContent = 'Desconectado';
+        statusEl.className = 'connection-status disconnected';
+      }
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      
+      document.querySelectorAll('.tab').forEach((t, idx) => {
+        if ((tab === 'kitchen' && idx === 0) || (tab === 'bar' && idx === 1)) {
+          t.classList.add('active');
+        } else {
+          t.classList.remove('active');
+        }
+      });
+
+      subscribeToRoom(tab);
+      renderOrders();
+    }
+
+    function renderOrders() {
+      const container = document.getElementById('orders-container');
+      const currentOrders = orders[currentTab];
+
+      if (currentOrders.length === 0) {
+        container.innerHTML = '<div class="empty-state"><p>Aguardando pedidos...</p></div>';
+        return;
+      }
+
+      container.innerHTML = currentOrders.map(order => `
+        <div class="order-card ${order.status.toLowerCase()}">
+          <div class="order-header">
+            <div class="order-number">Pedido #${order.id.substring(0, 8)}</div>
+            <div class="order-status status-${order.status.toLowerCase()}">
+              ${getStatusText(order.status)}
+            </div>
+          </div>
+          <div class="order-table">Mesa ${order.tableNumber}</div>
+          <div class="order-items">
+            ${order.items.map(item => `
+              <div class="order-item">
+                <span class="item-name">${item.name}</span>
+                <span class="item-price">R$ ${item.price.toFixed(2)}</span>
+              </div>
+            `).join('')}
+          </div>
+          ${order.customerAllergies.length > 0 ? `
+            <div class="allergies">
+              ⚠️ Alergias: ${order.customerAllergies.join(', ')}
+            </div>
+          ` : ''}
+          <div class="order-actions">
+            ${order.status === 'PENDING' ? `
+              <button class="btn btn-primary" onclick="updateOrderStatus('${order.id}', 'PREPARING')">
+                Iniciar Preparo
+              </button>
+            ` : ''}
+            ${order.status === 'PREPARING' ? `
+              <button class="btn btn-success" onclick="updateOrderStatus('${order.id}', 'READY')">
+                Finalizar
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function getStatusText(status) {
+      const statusMap = {
+        PENDING: 'Pendente',
+        PREPARING: 'Preparando',
+        READY: 'Pronto',
+        DELIVERED: 'Entregue'
+      };
+      return statusMap[status] || status;
+    }
+
+    async function updateOrderStatus(orderId, newStatus) {
+      try {
+        const response = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: newStatus }),
+        });
+
+        if (response.ok) {
+          const order = orders[currentTab].find(o => o.id === orderId);
+          if (order) {
+            order.status = newStatus;
+            renderOrders();
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao atualizar status:', error);
+      }
+    }
+
+    // Inicializar
+    connectWebSocket();
+    renderOrders();
+  </script>
+</body>
+</html>
+
